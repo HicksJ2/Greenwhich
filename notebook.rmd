@@ -1,0 +1,860 @@
+---
+title: "Greenwich HR "
+author: "James Hicks"
+date: 'January 2019'
+output:
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+# Introduction and Background
+This report was prepared by: 
+
+* James Hicks
+
+This report was finalized on April 25th 2019.
+This report is generated from an R Markdown file that includes all the R code necessary to produce the results described and embedded in the report.  
+
+Executing of this R notebook requires some subset of the following packages:
+
+* `LiblineaR`
+* `RColorBrewer`
+* `SnowballC`
+* `caTools`
+* `car`
+* `caret`
+* `class`
+* `corrplot`
+* `dplyr`
+* `factoextra`
+* `ggmap`
+* `ggplot2`
+* `kableExtra`
+* `knitr`
+* `lubridate`
+* `magrittr`
+* `plotly`
+* `randomForest`
+* `readr`
+* `reshape2`
+* `stringr`
+* `tidyr`
+* `tidyverse`
+* `tm`
+
+These will be installed and loaded as necessary (code suppressed). 
+
+```{r,include=FALSE,echo=FALSE}
+library(dplyr)
+library(car) 
+library(randomForest)
+library(lubridate)
+library(class)
+library(caret)
+library(LiblineaR)
+library(plotly)
+library(ggplot2)
+library(ggmap)
+library(readr)
+library(magrittr)
+library(dplyr)
+library(reshape2)
+library(stringr)
+library(dplyr)
+library(car) 
+library(randomForest)
+library(lubridate)
+library(class)
+library(caret)
+library(LiblineaR)
+library(plotly)
+library(reshape2)
+library(tidyr)
+library(magrittr)
+```
+
+```{r,include=FALSE,echo=FALSE}
+if (!require("ggplot2")) {
+   install.packages("ggplot2")
+   library(ggplot2)
+}
+if (!require("tidyverse")) {
+   install.packages("tidyverse")
+   library(tidyverse)
+}
+if (!require("readr")) {
+   install.packages("readr")
+   library(readr)
+}
+if (!require("dplyr")) {
+   install.packages("dplyr")
+   library(dplyr)
+}
+if (!require("plotly")) {
+   install.packages("plotly")
+   library(plotly)
+}
+if (!require("knitr")) {
+   install.packages("knitr")
+   library(knitr)
+}
+if (!require("corrplot")) {
+   install.packages("corrplot")
+   library(corrplot)
+}
+if (!require("factoextra")) {
+   install.packages("factoextra")
+   library(factoextra)
+}
+if (!require("kableExtra")) {
+   install.packages("kableExtra")
+   library(kableExtra)
+}
+if (!require("caTools")) {
+   install.packages("caTools")
+   library(caTools)
+}
+if (!require("randomForest")) {
+   install.packages("randomForest")
+   library(randomForest)
+}
+if (!require("tm")) {
+   install.packages("tm")
+   library(tm)
+}
+if (!require("SnowballC")) {
+   install.packages("SnowballC")
+   library(SnowballC)
+}
+if (!require("RColorBrewer")) {
+   install.packages("RColorBrewer")
+   library(RColorBrewer)
+}
+
+```
+# Loading in the data
+
+The chunk below reads in the various datasets from the provided files, and some subsets are created.
+
+```{r}
+master<-get(load(file="~/DARL_Fall2018/greenwich_hr/shared/RDat/SharedMasterDataNew.Rda"))
+roles<-get(load(file="~/DARL_Fall2018/greenwich_hr/shared/RDat/SharedRolesDataNew.Rda"))
+tags<-get(load(file="~/DARL_Fall2018/greenwich_hr/shared/RDat/SharedTagsData.Rda"))
+remove(new.roles.df)
+remove(new.master.df)
+remove(tags.df)
+data_related<-roles%>%filter(grepl("Data",role))
+dataRoles<-merge(master, data_related, by = "job_id")# now contains master & role data for all roles with data in the name
+tags2 <- tags[ ! tags$job_id %in% dataRoles$job_id, ]
+dataSciJobs<-dataRoles%>%filter(grepl("Data Scientist",role))
+```
+
+
+# Data Exploration & Visualization
+
+
+## Data Scientist Tags
+
+The chunk below isolates the data scientist tags and the frequencies that they appear.
+
+```{r}
+masterTag <- get(load(file = '~/DARL_Fall2018/greenwich_hr/shared/RDat/MasterMergeTags.Rda'))
+remove(master.merge.tags.df)
+DSTags<-masterTag%>%filter(job_id %in% dataSciJobs$job_id)%>%group_by(tag)%>%summarize(count=n(),prop=n()/nrow(dataSciJobs))
+DSTagsHealth<-masterTag%>%filter(job_id %in% dataSciJobs$job_id,vertical=="Healthcare")%>%group_by(tag)%>%summarize(count=n(),prop=n()/nrow(dataSciJobs))
+DSTagsIT<-masterTag%>%filter(job_id %in% dataSciJobs$job_id,vertical=="Information Technology")%>%group_by(tag)%>%summarize(count=n(),prop=n()/nrow(dataSciJobs))
+```
+
+### Proportion
+
+
+The chunk below creates the plot that displays the proportion of the top 25 data science tags.
+
+```{r}
+toplot1<-inner_join(DSTagsIT,DSTagsHealth,by='tag')
+toplot1<-toplot1[toplot1$prop.x>.05,]#req presence in at least 5% of jobs for both it and health
+toplot1<-toplot1[toplot1$prop.y>.05,]
+toplot2<-dataRoles%>%group_by(role)%>%summarize(count=n())
+redc<-'rgb(255,0,0)'
+bluec<-'rgb(0,0,255)'
+greenc<-'rgb(0,255,0)'
+plotly1<-plot_ly(toplot1,x=~prop.x,y=~reorder(tag,prop.x),type='bar',name='IT',orientation='h',marker=list(color=redc))%>%  add_trace(x=~prop.y,name ='Heathcare',marker=list(color=bluec))%>%layout(barmode= 'group',xaxis=list(title='Proportion of Data Science Jobs with tag'),yaxis=list(title="",tickfont=list(size = 8)),title="Top 25 tags in Healthcare and Information Technology",margin=list(l=28))
+plotly1
+```
+
+### Count
+
+The chunk below creates the plot that displays the raw count of the top 25 data science tags.
+
+```{r}
+toplot_IT<-toplot1[,-which(names(toplot1)%in% c("count.y","prop.y","prop.x"))]
+toplot_HC<-toplot1[,-which(names(toplot1)%in% c("count.x","prop.x","prop.y"))]
+plot_ly(toplot_IT,x=toplot_IT$count.x,y=~tag,type="bar",name="IT",marker=list(color=redc))%>%layout(margin=list(l=150),title="Top 25 Data Science tags by count")%>%add_trace(toplot_HC,x=toplot_HC$count.y,name="HC",marker=list(color=bluec))
+```
+
+
+
+
+## Data Science Jobs Vertical Split
+
+
+The chunk below creates the plot that displays the vertical split for data scientist jobs.
+
+```{r}
+p1<-ggplot(data=dataSciJobs, aes(x=vertical))+geom_bar(fill="steelblue")+ggtitle("Data Scientist Jobs Vertical Split")
+p1
+```
+
+
+## Data Related Jobs Distribution
+
+
+
+The chunk below creates the plot that displays the count of any role with "Data" in the name.
+
+```{r}
+plotly2<-plot_ly(toplot2,x=~count,y=~role,type='bar',name='Frequency',orientation='h',marker=list(color=bluec)) %>%layout(margin=(l=10),barmode= 'group',xaxis=list(title='Number of Job Postings'),yaxis=list(title="",tickfont=list(size = 8)),title="Distribution of Data Related Jobs",margin=list(l=40))
+plotly2
+```
+
+
+# Data Analysis
+
+## PCA
+
+
+The chunk below isolates the top tags, where top is defined to be any tag that appears more than 650 times.
+
+```{r}
+tagsIT<-masterTag%>%dplyr::select(job_id,tag,vertical)%>%filter(job_id%in%dataSciJobs$job_id,vertical == "Information Technology")
+tagsHC<-masterTag%>%dplyr::select(job_id,tag,vertical)%>%filter(job_id%in%dataSciJobs$job_id,vertical == "Healthcare")
+tagsAll<-rbind(tagsIT,tagsHC)
+library(DescTools)
+topTags<-as.data.frame(table(tagsAll$tag))
+topTags<-topTags[topTags$Freq>650,]#only looking at tags that appear at least 650 times
+topTagsS<-as.vector(topTags$Var1)
+```
+
+
+The chunk below one hot encodes the tags.
+
+
+
+```{r}
+jobId<-tagsAll%>%distinct(job_id)
+tagID<-masterTag%>%filter(job_id%in%jobId$job_id)#grab only the master+tag data for jobs with job id
+result<-data.frame(unique(jobId$job_id))#fills result with the job ids, making the cols
+colnames(result)<-"job_id"
+for(i in topTagsS)
+{
+    tagdat_id_i<-(tagID%>%filter(tag==i))$job_id#get the data for the job ids and tag
+    tmp<-result$job_id%in%tagdat_id_i #isolate to only include job ids in the final set
+    result[,i] <- ifelse(tmp,1,0)#adding a new col for the tag
+}
+onehoted<-result
+```
+
+
+The chunk below cleans the data before performing PCA on data scientist jobs in both verticals.
+
+```{r}
+onehoted_IDS<-as.data.frame(onehoted$job_id)
+colnames(onehoted_IDS)<-"job_id"
+justIDS<-onehoted_IDS
+onehoted_IDS<-merge(master, onehoted_IDS, by = "job_id")
+onehoted_IDS<-onehoted_IDS%>%filter(job_id%in%justIDS$job_id)
+#creating a 3rd vertical factor & removing duplicates
+repeatedIDS<-as.data.frame(table(onehoted_IDS$job_id))
+repeatedIDS<-repeatedIDS[repeatedIDS$Freq>=2,]
+repeatedIDS<-as.character(repeatedIDS$Var1)
+onehoted_IDS$vertical[onehoted_IDS$job_id%in%repeatedIDS]<-"Both"
+onehoted_IDS<-unique(onehoted_IDS)
+onehoted_IDS<-onehoted_IDS[!duplicated(onehoted_IDS[,c('job_id')]),]
+```
+
+### Data Projected Onto First two Principal Components
+
+The chunk below executes PCA on the data subset, and plots the same subset on the first two principal components colored by vertical.
+
+NOTE: The augmented reality tag is erroneous. The owner of the data instructed me to omit it from my analysis.
+
+```{r}
+onehoted_noID<- onehoted[ , -which(names(onehoted) %in% c("job_id","Augmented Reality"))]
+pca<-prcomp(onehoted_noID)
+PC1<-pca$x[,1]
+PC2<-pca$x[,2]
+colors<-as.factor(onehoted_IDS$vertical)
+PCA1<-ggplot(onehoted_noID,aes(x=PC1, y=PC2,color=colors))+geom_point()+ggtitle("PCA of Top Tags Denoted by Vertical")
+PCA1
+```
+
+### Scree Plot
+
+The chunk below creates the skree plot that displays the variance explained by the first 10 principal components.
+
+```{r}
+fviz_eig(pca,addlabels=TRUE, ncp=10)
+```
+
+
+### Correlation
+
+The chunk below creates the correlation between the tags.
+
+```{r}
+var<-get_pca_var(pca)
+corrplot(var$cos2,is.corr=FALSE,tl.cex=.3,tl.col="black",method='color')
+```
+
+
+
+
+
+## K Means Clustering
+
+### All Clusters
+
+The chunk below executes the K-Means clustering algorithm with three clusters on the principal components.
+
+
+```{r}
+vertical_km<-kmeans(var$coord,centers=3,nstart=50)
+clust<-as.factor(vertical_km$cluster)
+```
+
+
+The chunk below displays the result of the clustering plotted on the space spanned by the first two principal components.
+
+```{r}
+fviz_pca_var(pca,col.var=clust,palette=c("red", "blue", "green"),legend.title="Legend",repel=TRUE,title="K Means clusters of PCA Tags")
+```
+
+
+### 'IT' Cluster
+
+The chunk below displays what could be the IT tag cluster alone.
+
+```{r}
+fviz_pca_var(pca,col.var=clust,palette=c("white", "white", "green"),legend.title="Legend",repel=TRUE,title="K-Means PCA Cluster: Both Verticals")
+```
+
+### 'HC' Cluster
+
+The chunk below displays what could be the HC tag cluster alone.
+
+```{r}
+fviz_pca_var(pca,col.var=clust,palette=c("red", "white", "white"),legend.title="Legend",repel=TRUE,title="K-Means PCA Cluster: Healthcare")
+```
+
+### 'Experience' Cluster
+
+The chunk below displays what could be the experienced tag cluster alone.
+
+```{r}
+fviz_pca_var(pca,col.var=clust,palette=c("white", "blue", "white"),legend.title="Legend",repel=TRUE,title="K-Means PCA Cluster: Information Technology")
+```
+
+# Data Related Roles
+
+This section isolates all data related roles and creates a random forest model to classify the job samples as data scientist, or non data scientist.
+
+
+### Data Munging
+
+The chunk below isolates the data required.
+
+
+```{r}
+forestData<-dataRoles[,which(names(dataRoles)%in% c("role","job_id"))]
+tagsIT_A<-masterTag%>%dplyr::select(job_id,tag,vertical)%>%filter(job_id%in%dataRoles$job_id,vertical == "Information Technology")
+tagsHC_A<-masterTag%>%dplyr::select(job_id,tag,vertical)%>%filter(job_id%in%dataRoles$job_id,vertical == "Healthcare")
+tagsAllRoles<-rbind(tagsIT_A,tagsHC_A)
+```
+
+
+The chunk below one hot encodes the data from the previous chunk.
+
+
+```{r}
+#onehot
+jobId<-tagsAllRoles%>%distinct(job_id)
+tagID<-masterTag%>%filter(job_id%in%jobId$job_id)#grab only the master+tag data for jobs with job id
+result<-data.frame(unique(jobId$job_id))#fills result with the job ids, making the cols
+colnames(result)<-"job_id"
+for(i in topTagsS)
+{
+    tagdat_id_i<-(tagID%>%filter(tag==i))$job_id#get the data for the job ids and tag
+    tmp<-result$job_id%in%tagdat_id_i #isolate to only include job ids in the final set
+    result[,i] <- ifelse(tmp,1,0)#adding a new col for the tag
+}
+```
+
+
+
+The chunk below removes some columns, and merges the one hot encoded data with the data roles data.
+
+
+```{r}
+onehotedAll<-merge(dataRoles,result,by="job_id")
+onehotedAll_id<-onehotedAll$job_id
+onehotedAll<-onehotedAll[,-which(names(onehotedAll)%in% c("job_id"))]
+onehotedAll$role<-as.factor(onehotedAll$role)
+colnames(onehotedAll)[15]<-"Class"
+onehotedAll<-onehotedAll[,-which(names(onehotedAll) %in% c("Augmented Reality","post_date","fill_date","time_to_fill","company","location","salary","city","state","zip","county","latitude","longitude","region_state"
+))]
+```
+
+## Data Related Roles Distribution
+
+The chunk below creates the plot that displays the frequency of the data related roles.
+
+```{r}
+toplot3<-onehotedAll%>%dplyr::select(Class)%>%group_by(Class)%>%summarize(count=n())
+plot_ly(onehotedAll,y=toplot3$Class,x=toplot3$count,type="bar",name="IT",marker=list(color=bluec))%>%layout(margin=list(l=150),title="Distribution of Data Related Roles")
+```
+
+
+
+The chunk below prepares the data for modeling. it removes outliers, sets a random seed, recodes the role variable to create an accurate binary class variable.
+
+
+```{r}
+#drop the outliers
+onehotedAll<-onehotedAll%>%filter(Class != "Chief Data Officer" ||Class != "Data Center Operator"||Class != "Data Center Specialist" )
+onehotedAll_id<-onehotedAll$Class
+set.seed(341)
+onehotedAll<-as.data.frame(onehotedAll)
+onehotedAll<-cbind(onehotedAll,onehotedAll_id)
+colnames(onehotedAll)[55]<-"job_id"
+onehotedAll$Class<-recode(onehotedAll$Class,"c('Data Analyst','Data Specialist','Data Consultant','Healthcare Data Analyst','Data Engineer','Database Administrator','Data Architect','Chief Data Officer','Database Developer','Database Analyst','Database Specialist','Data Center Tech','Data Center Specialist','Data Developer','Data Center Manager','Data Center Operator')='Non Data Scientist'")
+onehotedAll$vertical<-as.factor(onehotedAll$vertical)
+```
+
+
+The chunk below isolates the data that will be used for model construction and validation.
+
+
+```{r}
+modelData<-onehotedAll%>%filter(Class=="Data Scientist")
+modelData_id_DS<-modelData$job_id
+temp<-onehotedAll%>%filter(Class=="Non Data Scientist")
+modelData_id_NDS<-temp$job_id
+ss0<-as.integer(.1*nrow(temp))
+value0<-sample(1:nrow(temp),ss0)
+temp<-temp[value0,]
+modelData<-rbind(modelData,temp)
+```
+
+
+The chunk below splits the model data into training and testing sets with a 70/30 split.
+
+
+```{r}
+ss<-as.integer(.7*nrow(modelData))
+value<-sample(1:nrow(modelData),ss)
+traindata<-modelData[value,]
+testdata<-modelData[-value,]
+trainID<-traindata$job_id
+testID<-testdata$job_id
+traindata<-traindata[,-which(names(traindata)%in% c("job_id"))]
+testdata<-testdata[,-which(names(testdata)%in% c("job_id"))]
+```
+
+
+## Training
+
+
+The chunk below creates a random forest model on the training data.
+
+```{r,echo=FALSE}
+attach(traindata)
+randFor<-randomForest(Class~.,data=traindata)
+```
+
+### Training Metrics
+
+
+The chunk below outputs the training metrics from the random forest training set.
+
+
+```{r}
+print(randFor)
+```
+
+###  Error & Trees
+
+The chunk below outputs the change in error as the model trained.
+
+
+```{r}
+plot(randFor,main="Random Forest Error - Role Classification")
+```
+
+### 20 Key Variables
+
+
+The chunk below outputs the top 20 variables that were important to increase the accuracy of the model.
+
+
+```{r}
+varImpPlot(randFor,sort=T,n.var=20,main="Variable Importance - Classifying Role")
+```
+
+
+## Testing
+
+
+### Testing Metrics
+
+The chunks below outputs the testing metrics from the random forest training set.
+
+
+```{r}
+#test
+fortable<-table(predict(randFor,testdata),as.factor(testdata$Class))
+tmp<-diag(prop.table(fortable,1))
+cat("\nPercentage Correct in Testing\n\tData Scientist:\t\t",round(tmp[1]*100,2),"\n\tNon Data Scientist:\t",round(tmp[2]*100,2),"\n\tAverage:\t\t",round(sum(diag(prop.table(fortable)))*100,2))
+```
+
+
+```{r}
+cat("\n","\nConfusion Matrix:\n")
+fortable
+```
+
+
+## False Positive Distribution
+
+The chunk below isolates the false positive and false negative subsets from the testing set.
+
+```{r}
+testdata2<-testdata
+predicted<-predict(randFor,testdata)
+testdata2<-cbind(testdata2,predicted,testID)
+test_fp<-testdata2%>%filter(predicted=="Data Scientist",Class=="Non Data Scientist")
+test_fn<-testdata2%>%filter(predicted=="Non Data Scientist",Class=="Data Scientist")
+```
+
+
+The chunk below creates a visualization that shows the distribution of the roles in the false positive set.
+
+```{r}
+toplot4<-test_fp%>%dplyr::select(testID)%>%group_by(testID)%>%summarize(count=n())
+toplot4$testID<-factor(toplot4$testID,levels=unique(toplot4$testID)[order(toplot4$count,decreasing=FALSE)])
+plot_ly(toplot4,x=toplot4$count,y=toplot4$testID,type="bar",name="1",marker=list(color=bluec))%>%layout(margin=list(l=150),title="Distribution of False Positive Roles in Testing (n=403)")
+```
+
+# Non Data Related Roles
+
+This section creates a random forest model to classify the data scientist jobs with the non data scientist proportion comprising all roles.  There is signifigantly more data munging in this section due to some erroneous roles.
+
+NOTE: This section only considers jobs in the IT vertical.
+
+## Data Munging
+
+
+### Data Isolation
+
+
+The chunk below isolates the data required and determines how many unique roles are present in the data.
+
+
+```{r}
+allRelated<-merge(master, roles, by = "job_id")
+dropAll<-c("post_date","fill_date","time_to_fill","company","location","salary","city","state","zip","county","latitude","longitude","region_state")
+allRelated<-allRelated[,-which(names(allRelated)%in% dropAll)]
+allRelated<-allRelated%>%filter(role!=".Net Specialist")%>%filter(role!="Data Scientist")%>%filter(job_id%in%tags$job_id)
+allRelated$role<-as.factor(allRelated$role)
+uRole<-unique(allRelated$role)
+```
+
+
+The chunk below samples the data via stratified sampling to subset the non data scientist portion of the data.
+
+
+```{r}
+result<-allRelated%>%filter(role=="This role does not exist",vertical=="Information Technology")#creates an empty dataframe
+for (i in 1:length(uRole))
+{
+  tmp<-allRelated%>%filter(role==uRole[i])
+  val<-sample(1:nrow(tmp),18,replace=TRUE)
+  tmp<-tmp[val,]%>%filter(is.na(job_id)==FALSE)
+  result<-rbind(result,tmp)
+}
+result<-result%>%filter(role!="Virtualization Administrator\\\n\\\n")#error
+colnames(result)[2]<-"vertical"
+colnames(result)[3]<-"role"
+allSample<-merge(result,tags,by="job_id")
+allSample<-allSample%>%filter(tag!="Augmented Reality")
+allSample<-allSample[!duplicated(allSample$job_id),]
+theTags<-unique(allSample$tag)
+jobRole<-cbind(result$job_id,result$role)
+```
+
+
+
+The chunk below one hot encodes the samples.
+
+
+```{r}
+jobid<-allSample%>%distinct(job_id)#distinct job ids
+  tagID<-masterTag%>%filter(job_id%in%jobid$job_id)#grab only the master+tag data for jobs with job id
+  result2<- data.frame(unique(jobid$job_id))#all the unique job ids
+  colnames(result2)<-"job_id"
+  for(i in theTags){
+    result2[,i] <- ifelse(result2$job_id%in%(tagID%>%filter(tag==i))$job_id,1,0)
+  }
+```
+
+
+
+
+The chunk below recodes the vertical variable to denote the non data scientist class. Because all samples present are from the IT vertical, there is no use to include it in analysis.
+
+
+```{r}
+tmp<-allSample%>%dplyr::select(job_id,vertical,role)
+resultA<-merge(tmp,result2,by="job_id")
+modelData_roles<-resultA$role
+resultA$role<-as.factor(resultA$role)
+resultA$vertical<-as.factor(resultA$vertical)
+resultA$Class<-recode(resultA$vertical,"c('Information Technology','Healthcare')='Non Data Scientist'")
+```
+
+### Column creation - Non Data Scientist Jobs
+
+
+The chunks below create empty columns populated with zeros to represent the tags that are not present. The values are hard coded based on the set of tags identified in the previous chunks.
+
+The chunk below creates the output variable with desired tags.
+
+```{r}
+tmp<-c("")
+for (i in theTags)
+{
+  v<-sum(resultA[,i])
+  if (v<100)
+  {
+    tmp<-c(tmp,as.character(i))
+  }
+}
+resultA<-resultA[,-which(colnames(resultA)%in% tmp)]
+```
+
+The chunk below adds the tags that are not present with a column of zeros.
+
+```{r}
+resultA2<-resultA
+z<-rep(0,nrow(resultA2))
+tmp<-c("")
+for (i in topTags$Var1)
+{
+  b<-i%in%colnames(resultA2)
+  if (!b)
+  {
+    resultA2<-cbind(resultA2,z)
+    tmp<-c(tmp,as.character(i))
+  }
+  
+}
+```
+
+
+The chunk below renames the added coumns to reflect the tags that are not present. The class tag is explicitly named due to the vertical recode.
+
+
+```{r}
+for (i in 1:length(tmp))
+{
+  colnames(resultA2)[(i+313)]<-as.character(tmp[i])
+}
+colnames(resultA2)[314]<-"Class"
+```
+
+### Column creation - Data Scientist Jobs
+
+The chunks below create empty columns populated with zeros to represent the tags that are not present. The values are hard coded based on the set of tags identified in the previous chunks.
+
+The chunk below isolates the data required.
+
+```{r}
+tomerge<-onehotedAll%>%filter(Class=="Data Scientist")
+colnames(tomerge)[55]<-"role"
+tomerge_id_DS<-tomerge$job_id
+colsample<-colnames(resultA2)
+drop<-c("")
+```
+
+
+The chunk below creates empty columns populated with zeros to represent the tags that were not present and renames them.
+
+
+```{r}
+z<-rep(0,nrow(tomerge))
+tmp<-c("")
+namesm<-c("")
+namesm<-c(colnames(tomerge),"role")
+for (i in colsample)
+{
+  b<-i%in%colnames(tomerge)
+  if (!b)
+  {
+    tomerge<-cbind(tomerge,z)
+    tmp<-c(tmp,as.character(i))
+  }
+  
+}
+for (i in 1:length(tmp))
+{
+  colnames(tomerge)[(i+54)]<-as.character(tmp[i])
+}
+colnames(tomerge)[55]<-"role"
+```
+
+
+### Model Data Isolation
+
+
+The chunk below alphabetizes the columns in each dataset to join them together. The output will be character(0) if no columns are missing.
+
+
+
+```{r}
+name_merge<-colnames(tomerge)
+name_res<-colnames(resultA2)
+tomerge<-tomerge[,order(colnames(tomerge))]
+resultA2<-resultA2[,order(colnames(resultA2))]
+name_merge<-colnames(tomerge)
+name_res<-colnames(resultA2)
+a<-union(colnames(tomerge),colnames(resultA2))
+b<-intersect(colnames(tomerge),colnames(resultA2))
+setdiff(a,b)
+modelData<-rbind(tomerge,resultA2)
+```
+
+
+The chunk below encodes all strings as factors and removes the job_id variable as it has been stored previously.
+
+
+```{r}
+modelData<-data.frame(modelData,stringsAsFactors = TRUE)
+modelData<-modelData[,-which(names(modelData) %in% c("job_id"))]
+```
+
+The chunk below splits the model data with a 70/30 split.
+
+
+```{r}
+ss<-as.integer(.7*nrow(modelData))
+value<-sample(1:nrow(modelData),ss)
+traindata<-modelData[value,]
+testdata<-modelData[-value,]
+trainID<-traindata$job_id
+testID<-testdata$job_id
+tmp<-modelData[-value,]
+testd_role<-tmp$role
+traindata<-traindata[,-which(names(traindata)%in% c("role"))]
+testdata<-testdata[,-which(names(testdata)%in% c("role"))]
+```
+
+
+
+## Training
+
+
+The chunk below creates a random forest model with the data from the previous section.
+
+
+
+```{r,echo=FALSE}
+attach(traindata)
+randFor<-randomForest(Class~.,data=traindata)
+```
+
+### Training Metrics
+
+
+The chunk below outputs the error metrics from the training set.
+
+
+```{r}
+print(randFor)
+```
+
+###  Error & Trees
+
+
+The chunk below outputs the change in error as the model trained.
+
+
+```{r}
+plot(randFor,main="Random Forest Error - Role Classification for ALL roles")
+```
+
+### 20 Key Variables
+
+
+
+The chunk below displays the top 20 variables that are of highest importance to increase the accuracy of the model.
+
+
+```{r}
+varImpPlot(randFor,sort=T,n.var=20,main="Variable Importance - Classifying Role for ALL roles")
+```
+
+
+## Testing
+
+
+### Testing Metrics
+
+
+The chunks below outputs the error metrics from the testing set.
+
+
+```{r}
+fortable<-table(predict(randFor,testdata),as.factor(testdata$Class))
+tmp<-diag(prop.table(fortable,1))
+cat("\nPercentage Correct in Testing\n\tData Scientist:\t\t",round(tmp[1]*100,2),"\n\tNon Data Scientist:\t",round(tmp[2]*100,2),"\n\tAverage:\t\t",round(sum(diag(prop.table(fortable)))*100,2))
+```
+
+
+```{r}
+cat("\n","\nConfusion Matrix:\n")
+fortable
+```
+
+
+## False Positive Distribution
+
+
+The chunk below isolates the false positive and false negative subsets from the testing set.
+
+
+```{r}
+testdata2<-testdata
+predicted<-predict(randFor,testdata)
+testdata2<-cbind(testdata2,predicted,testd_role)
+testdata2<-testdata2%>%dplyr::select(predicted,testd_role,Class,vertical)
+test_fp<-testdata2%>%filter(predicted=="Data Scientist",Class=="Non Data Scientist")
+test_fn<-testdata2%>%filter(predicted=="Non Data Scientist",Class=="Data Scientist")
+```
+
+
+The chunk below creates and outputs the plot that displays the distribution of false positive roles.
+
+
+```{r}
+toplot5<-test_fp%>%dplyr::select(testd_role)%>%group_by(testd_role)%>%summarize(count=n())%>%filter(count>1)
+toplot5$testd_role<-factor(toplot5$testd_role,levels=unique(toplot5$testd_role))
+toplot5<-toplot5[order(toplot5$count,decreasing=TRUE),]
+plot_ly(toplot5,x=toplot5$count,y=toplot5$testd_role,type="bar",name="1",marker=list(color=bluec))%>%layout(margin=list(l=150),title="Distribution of False Positive Roles in Testing (n=125)")
+```
+
